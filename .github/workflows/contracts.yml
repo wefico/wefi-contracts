@@ -20,14 +20,9 @@ jobs:
           version: nightly
 
       - name: Run Forge build
-        run: |
-          cd apps/contracts/
-          forge --version
-          forge build --sizes
+        run: forge build --sizes
         id: build
 
       - name: Run Forge tests
-        run: |
-          cd apps/contracts/
-          forge test -vv
+        run: forge test -vv
         id: test
