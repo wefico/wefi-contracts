@@ -1,0 +1,56 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# testing
+coverage
+
+# svelte
+.svelte-kit
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Ignore lock files for NPM, YARN, and PNPM, except BUN
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+# bun.lockb
+
+# Ignore exported Partytown files
+~partytown
+
+# Compiler files
+cache/
+out/
+.eslintcache
+
+# Sentry
+.sentryclirc
+
+# Wrangler
+.wrangler
+
+# macOS-specific files
+.DS_Store
+
+# env files
+.env
+!apps/api/.dev.vars
+!apps/app/.env
+
+# Vs Code
+.vscode

@@ -1,0 +1,43 @@
+{
+	"name": "wefi-contracts",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"clean": "rm -rf cache out",
+		"format": "prettier --write --ignore-path=../../.prettierignore 'src/*.sol'",
+		"lint": "prettier --check --ignore-path=../../.prettierignore 'src/*.sol'"
+	},
+	"devDependencies": {
+		"prettier": "3.3.3",
+		"prettier-plugin-solidity": "1.4.1"
+	},
+	"prettier": {
+		"useTabs": true,
+		"singleQuote": false,
+		"semi": false,
+		"trailingComma": "all",
+		"printWidth": 100,
+		"plugins": [
+			"prettier-plugin-solidity"
+		],
+		"overrides": [
+			{
+				"files": "*.sol",
+				"options": {
+					"parser": "solidity-parse",
+					"printWidth": 100,
+					"tabWidth": 4,
+					"useTabs": false,
+					"singleQuote": false,
+					"bracketSpacing": false
+				}
+			},
+			{
+				"files": "*.json",
+				"options": {
+					"trailingComma": "none"
+				}
+			}
+		]
+	}
+}
