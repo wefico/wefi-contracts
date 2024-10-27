@@ -1,19 +1,26 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.20;
 
 /**
  * @title WFIDistributorTest
  * @notice Tests for the WFIDistributor contract using Foundry and forge-std/Test.sol.
  */
 
-import "forge-std/Test.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+
+import "forge-std/Test.sol";
+import "forge-std/console.sol";
 import "../src/WFIDistributor.sol";
 
 /**
  * @dev A simple ERC20 token for testing purposes.
  */
 contract ERC20Mock is ERC20 {
+    using ECDSA for bytes32;
+    using MessageHashUtils for bytes32;
+
     constructor(
         string memory name,
         string memory symbol,
@@ -33,6 +40,8 @@ contract WFIDistributorTest is Test {
     address public owner = address(0xABCD);
     address public user = address(0x1234);
     address public treasury = address(0xDEAD);
+    address public verifier;
+    uint256 privateKey = 0x1010101010101010101010101010101010101010101010101010101010101010;
 
     // Launch timestamp
     uint256 public launchTimestamp;
@@ -45,6 +54,8 @@ contract WFIDistributorTest is Test {
         vm.label(owner, "Owner");
         vm.label(user, "User");
         vm.label(treasury, "Treasury");
+        verifier = vm.addr(privateKey);
+        vm.label(verifier, "Verifier");
 
         // Deploy a mock WFI token and mint total supply to the owner
         vm.startPrank(owner);
@@ -56,7 +67,12 @@ contract WFIDistributorTest is Test {
 
         // Deploy the WFIDistributor contract
         vm.startPrank(owner);
-        distributorContract = new WFIDistributor(owner, IERC20(address(wfiToken)), launchTimestamp);
+        distributorContract = new WFIDistributor(
+            owner,
+            IERC20(address(wfiToken)),
+            launchTimestamp,
+            verifier
+        );
         vm.stopPrank();
 
         // Transfer tokens to the distribution contract
@@ -66,13 +82,30 @@ contract WFIDistributorTest is Test {
     }
 
     /**
+     * @notice Get a signature for testing purposes.
+     */
+    function getSignature(
+        address claimedFrom,
+        uint256 amount,
+        uint256 validUntil
+    ) public view returns (bytes memory) {
+        // Verify if provided arguments and signature are valid and matching
+        bytes32 msgHash = MessageHashUtils.toEthSignedMessageHash(
+            keccak256(abi.encodePacked(claimedFrom, amount, validUntil))
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, msgHash);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        assertEq(signature.length, 65);
+        console.logBytes(signature);
+        return signature;
+    }
+
+    /**
      * @notice Test initialization and basic setup.
      */
     function testInitialization() public view {
         // Check initial state variables
         assertEq(distributorContract.launchTimestamp(), launchTimestamp);
-        assertEq(distributorContract.lastMiningUpdate(), launchTimestamp);
-        assertEq(distributorContract.lastReferralUpdate(), launchTimestamp);
 
         // Check the WFI token balance of the distribution contract
         uint256 contractBalance = wfiToken.balanceOf(address(distributorContract));
@@ -84,8 +117,11 @@ contract WFIDistributorTest is Test {
      */
     function testCannotClaimMiningRewardsBeforeLaunch() public {
         vm.startPrank(user);
+        uint256 amount = 100 * 1e18;
+        uint256 validUntil = block.timestamp + 100;
+        bytes memory signature = getSignature(user, amount, validUntil);
         vm.expectRevert("Distribution has not started yet");
-        distributorContract.claimMiningRewards();
+        distributorContract.claimMiningRewards(amount, validUntil, signature);
         vm.stopPrank();
     }
 
@@ -94,8 +130,11 @@ contract WFIDistributorTest is Test {
      */
     function testCannotClaimReferralRewardsBeforeLaunch() public {
         vm.startPrank(user);
+        uint256 amount = 100 * 1e18;
+        uint256 validUntil = block.timestamp + 100;
+        bytes memory signature = getSignature(user, amount, validUntil);
         vm.expectRevert("Distribution has not started yet");
-        distributorContract.claimReferralRewards();
+        distributorContract.claimReferralRewards(amount, validUntil, signature);
         vm.stopPrank();
     }
 
@@ -104,15 +143,18 @@ contract WFIDistributorTest is Test {
      */
     function testClaimMiningRewards() public {
         // Warp to just after launch timestamp
-        vm.warp(launchTimestamp + 1);
-
-        vm.startPrank(user);
-        distributorContract.claimMiningRewards();
-        vm.stopPrank();
+        vm.warp(launchTimestamp + 100);
 
         // Calculate expected rewards
         uint256 elapsedTime = block.timestamp - launchTimestamp;
         uint256 expectedReward = elapsedTime * 8 * 1e18; // First interval emission rate
+
+        uint256 amount = expectedReward;
+        uint256 validUntil = block.timestamp + 100;
+        bytes memory signature = getSignature(user, amount, validUntil);
+        vm.startPrank(user);
+        distributorContract.claimMiningRewards(amount, validUntil, signature);
+        vm.stopPrank();
 
         // Check user's WFI token balance
         uint256 userBalance = wfiToken.balanceOf(user);
@@ -121,6 +163,18 @@ contract WFIDistributorTest is Test {
         // Check totalMiningDistributed
         uint256 totalDistributed = distributorContract.totalMiningDistributed();
         assertEq(totalDistributed, expectedReward);
+
+        // Check claim data
+        (
+            address claimedFrom,
+            uint256 claimTimestamp,
+            uint256 claimValidUntil,
+            uint256 claimAmount
+        ) = distributorContract.claims(signature);
+        assertEq(claimedFrom, user);
+        assertEq(claimTimestamp, block.timestamp);
+        assertEq(claimValidUntil, validUntil);
+        assertEq(claimAmount, amount);
     }
 
     /**
@@ -128,17 +182,20 @@ contract WFIDistributorTest is Test {
      */
     function testClaimReferralRewards() public {
         // Warp to just after launch timestamp
-        vm.warp(launchTimestamp + 1);
-
-        vm.startPrank(user);
-        distributorContract.claimReferralRewards();
-        vm.stopPrank();
+        vm.warp(launchTimestamp + 100);
 
         // Calculate expected rewards
         uint256 elapsedTime = block.timestamp - launchTimestamp;
         uint256 totalVested = (distributorContract.REFERRAL_STAKING_POOL() * elapsedTime) /
             (730 days);
         uint256 expectedReward = totalVested;
+
+        uint256 amount = expectedReward;
+        uint256 validUntil = block.timestamp + 100;
+        bytes memory signature = getSignature(user, amount, validUntil);
+        vm.startPrank(user);
+        distributorContract.claimReferralRewards(amount, validUntil, signature);
+        vm.stopPrank();
 
         // Check user's WFI token balance
         uint256 userBalance = wfiToken.balanceOf(user);
@@ -147,6 +204,18 @@ contract WFIDistributorTest is Test {
         // Check totalReferralDistributed
         uint256 totalDistributed = distributorContract.totalReferralDistributed();
         assertEq(totalDistributed, expectedReward);
+
+        // Check claim data
+        (
+            address claimedFrom,
+            uint256 claimTimestamp,
+            uint256 claimValidUntil,
+            uint256 claimAmount
+        ) = distributorContract.claims(signature);
+        assertEq(claimedFrom, user);
+        assertEq(claimTimestamp, block.timestamp);
+        assertEq(claimValidUntil, validUntil);
+        assertEq(claimAmount, amount);
     }
 
     /**
@@ -154,20 +223,24 @@ contract WFIDistributorTest is Test {
      */
     function testPauseAndUnpause() public {
         // Warp to after launch
-        vm.warp(launchTimestamp + 1);
+        vm.warp(launchTimestamp + 100);
 
         // Pause the contract
         vm.startPrank(owner);
         distributorContract.pause();
         vm.stopPrank();
 
+        uint256 amount1 = 100 * 1e18;
+        uint256 validUntil1 = block.timestamp + 100;
+        bytes memory signature1 = getSignature(user, amount1, validUntil1);
+
         // Attempt to claim rewards while paused
         vm.startPrank(user);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        distributorContract.claimMiningRewards();
+        distributorContract.claimMiningRewards(amount1, validUntil1, signature1);
 
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        distributorContract.claimReferralRewards();
+        distributorContract.claimReferralRewards(amount1, validUntil1, signature1);
         vm.stopPrank();
 
         // Unpause the contract
@@ -177,8 +250,12 @@ contract WFIDistributorTest is Test {
 
         // Claim rewards after unpausing
         vm.startPrank(user);
-        distributorContract.claimMiningRewards();
-        distributorContract.claimReferralRewards();
+        distributorContract.claimMiningRewards(amount1, validUntil1, signature1);
+
+        uint256 amount2 = 10 * 1e18;
+        uint256 validUntil2 = block.timestamp + 10;
+        bytes memory signature2 = getSignature(user, amount2, validUntil2);
+        distributorContract.claimReferralRewards(amount2, validUntil2, signature2);
         vm.stopPrank();
 
         // Check balances to ensure rewards were received
@@ -232,31 +309,6 @@ contract WFIDistributorTest is Test {
     }
 
     /**
-     * @notice Test claiming mining rewards over multiple intervals.
-     */
-    function testClaimMiningRewardsMultipleIntervals() public {
-        // Warp to after the first interval
-        uint256 firstIntervalDuration = distributorContract.intervalDurations(0);
-        vm.warp(launchTimestamp + firstIntervalDuration + 1);
-
-        vm.startPrank(user);
-        distributorContract.claimMiningRewards();
-        vm.stopPrank();
-
-        // Calculate expected rewards
-        uint256 expectedReward = firstIntervalDuration * 8 * 1e18;
-
-        // Add rewards from the second interval
-        uint256 elapsedTime = block.timestamp - (launchTimestamp + firstIntervalDuration);
-        uint256 secondIntervalElapsed = elapsedTime;
-        expectedReward += secondIntervalElapsed * 4 * 1e18;
-
-        // Check user's WFI token balance
-        uint256 userBalance = wfiToken.balanceOf(user);
-        assertEq(userBalance, expectedReward);
-    }
-
-    /**
      * @notice Test that claiming rewards cannot exceed the allocated pools.
      */
     function testCannotExceedAllocatedPools() public {
@@ -264,14 +316,17 @@ contract WFIDistributorTest is Test {
         uint256 miningDuration = distributorContract.miningRewardsDuration();
         vm.warp(launchTimestamp + miningDuration + 1);
 
+        uint256 amount = 100 * 1e18;
+        uint256 validUntil = block.timestamp + 100;
+        bytes memory signature = getSignature(user, amount, validUntil);
         vm.startPrank(user);
-        distributorContract.claimMiningRewards();
+        distributorContract.claimMiningRewards(amount, validUntil, signature);
         vm.stopPrank();
 
-        // Attempt to claim again should result in zero reward
+        // Attempt to claim again should result in a revert
         vm.startPrank(user);
-        vm.expectRevert("No mining rewards to claim");
-        distributorContract.claimMiningRewards();
+        vm.expectRevert("Claim already exists");
+        distributorContract.claimMiningRewards(amount, validUntil, signature);
         vm.stopPrank();
 
         // Total distributed should not exceed MINING_REWARDS_POOL

@@ -11,10 +11,16 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
+    using ECDSA for bytes32;
+    using MessageHashUtils for bytes32;
+
     // WFI token interface
     IERC20 public immutable wfiToken;
+    address public verifierAddress;
 
     // Launch timestamp from which all time-based calculations begin
     uint256 public immutable launchTimestamp;
@@ -42,12 +48,24 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
     uint256 public constant REFERRAL_VESTING_DURATION = 730 days;
 
     // Tracking variables for mining rewards
-    uint256 public lastMiningUpdate;
     uint256 public totalMiningDistributed;
-
-    // Tracking variables for referral and staking rewards
-    uint256 public lastReferralUpdate;
+    // Tracking variable for referral and staking rewards
     uint256 public totalReferralDistributed;
+
+    // Struct to store claim data per user
+    struct ClaimData {
+        address claimedFrom;
+        uint256 timestamp;
+        uint256 validUntil;
+        uint256 amount;
+    }
+
+    // Mapping to store claim data per user
+    mapping(bytes => ClaimData) public claims;
+    // Mapping to store claim data signatures per user for mining rewards
+    mapping(address => bytes[]) public miningClaims;
+    // Mapping to store claim data signatures per user for referral rewards
+    mapping(address => bytes[]) public referralClaims;
 
     // Events for monitoring
     event MiningRewardsClaimed(address indexed user, uint256 amount);
@@ -59,15 +77,18 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      * @param _wfiToken Address of the WFI token contract.
      * @param _launchTimestamp The timestamp from which distributions start.
      */
-    constructor(address _newOwner, IERC20 _wfiToken, uint256 _launchTimestamp) Ownable(_newOwner) {
+    constructor(
+        address _newOwner,
+        IERC20 _wfiToken,
+        uint256 _launchTimestamp,
+        address _verifierAddress
+    ) Ownable(_newOwner) {
         require(address(_wfiToken) != address(0), "Invalid token address");
         require(_launchTimestamp >= block.timestamp, "Launch timestamp must be in the future");
 
+        verifierAddress = _verifierAddress;
         wfiToken = _wfiToken;
         launchTimestamp = _launchTimestamp;
-
-        lastMiningUpdate = _launchTimestamp;
-        lastReferralUpdate = _launchTimestamp;
 
         // Calculate total mining rewards duration
         for (uint256 i = 0; i < intervalDurations.length; i++) {
@@ -77,25 +98,54 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice Claims the accumulated mining rewards for the caller.
+     * @param amount The amount of WFI to claim.
+     * @param validUntil The timestamp until which the claim is valid.
+     * @param signature The bytes signature associated with the claim.
      */
-    function claimMiningRewards() external whenNotPaused nonReentrant {
-        // TODO: Verify the signature. Currently not added to simplify testing of core functionality.
+    function claimMiningRewards(
+        uint256 amount,
+        uint256 validUntil,
+        bytes memory signature
+    ) external whenNotPaused nonReentrant {
+        // Verify the signature
+        require(claims[signature].amount == 0, "Claim already exists");
+        require(validUntil >= block.timestamp, "Claim expired");
+        require(
+            wfiToken.balanceOf(address(this)) >= amount,
+            "Not enough WFI available on the contract"
+        );
+        // Verify if provided arguments and signature are valid and matching
+        bytes32 messageHash = keccak256(
+            // Sequence of arguments is important here
+            abi.encodePacked(msg.sender, amount, validUntil)
+        ).toEthSignedMessageHash();
+        address signer = messageHash.recover(signature);
+        require(signer == verifierAddress, "Invalid signature");
 
         require(block.timestamp > launchTimestamp, "Distribution has not started yet");
 
         uint256 claimable = _calculateMiningRewards();
         require(claimable > 0, "No mining rewards to claim");
+        require(claimable - totalMiningDistributed >= amount, "Amount exceeds claimable rewards");
+        require(
+            totalMiningDistributed + claimable <= MINING_REWARDS_POOL,
+            "Exceeds mining rewards pool"
+        );
 
-        // Update state before external calls
-        lastMiningUpdate = block.timestamp;
         totalMiningDistributed += claimable;
-
-        require(totalMiningDistributed <= MINING_REWARDS_POOL, "Exceeds mining rewards pool");
+        // Store claim data
+        claims[signature] = ClaimData({
+            claimedFrom: msg.sender,
+            timestamp: block.timestamp,
+            validUntil: validUntil,
+            amount: amount
+        });
+        miningClaims[msg.sender].push(signature);
 
         // Transfer the calculated reward to the caller
-        wfiToken.transfer(msg.sender, claimable);
+        wfiToken.transfer(msg.sender, amount);
 
-        emit MiningRewardsClaimed(msg.sender, claimable);
+        emit MiningRewardsClaimed(msg.sender, amount);
     }
 
     /**
@@ -104,7 +154,7 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      */
     function _calculateMiningRewards() internal view returns (uint256) {
         uint256 totalReward = 0;
-        uint256 lastUpdate = lastMiningUpdate;
+        uint256 lastUpdate = launchTimestamp;
 
         uint256 intervalStart = launchTimestamp;
 
@@ -139,26 +189,54 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice Claims the accumulated referral and staking rewards for the caller.
+     * @param amount The amount of WFI to claim.
+     * @param validUntil The timestamp until which the claim is valid.
+     * @param signature The bytes signature associated with the claim.
      */
-    function claimReferralRewards() external whenNotPaused nonReentrant {
+    function claimReferralRewards(
+        uint256 amount,
+        uint256 validUntil,
+        bytes memory signature
+    ) external whenNotPaused nonReentrant {
+        // Verify the signature
+        require(claims[signature].amount == 0, "Claim already exists");
+        require(validUntil >= block.timestamp, "Claim expired");
+        require(
+            wfiToken.balanceOf(address(this)) >= amount,
+            "Not enough WFI available on the contract"
+        );
+        // Verify if provided arguments and signature are valid and matching
+        bytes32 messageHash = keccak256(
+            // Sequence of arguments is important here
+            abi.encodePacked(msg.sender, amount, validUntil)
+        ).toEthSignedMessageHash();
+        address signer = messageHash.recover(signature);
+        require(signer == verifierAddress, "Invalid signature");
+
         require(block.timestamp > launchTimestamp, "Distribution has not started yet");
 
         uint256 claimable = _calculateReferralRewards();
         require(claimable > 0, "No referral rewards to claim");
-
-        // Update state before external calls
-        lastReferralUpdate = block.timestamp;
-        totalReferralDistributed += claimable;
-
+        require(claimable - totalReferralDistributed >= amount, "Amount exceeds claimable rewards");
         require(
-            totalReferralDistributed <= REFERRAL_STAKING_POOL,
+            totalReferralDistributed + claimable <= REFERRAL_STAKING_POOL,
             "Exceeds referral/staking rewards pool"
         );
 
-        // Transfer the calculated reward to the caller
-        wfiToken.transfer(msg.sender, claimable);
+        totalReferralDistributed += claimable;
+        // Store claim data
+        claims[signature] = ClaimData({
+            claimedFrom: msg.sender,
+            timestamp: block.timestamp,
+            validUntil: validUntil,
+            amount: amount
+        });
+        referralClaims[msg.sender].push(signature);
 
-        emit ReferralRewardsClaimed(msg.sender, claimable);
+        // Transfer the calculated reward to the caller
+        wfiToken.transfer(msg.sender, amount);
+
+        emit ReferralRewardsClaimed(msg.sender, amount);
     }
 
     /**
