@@ -16,7 +16,7 @@
 		"singleQuote": false,
 		"semi": false,
 		"trailingComma": "all",
-		"printWidth": 100,
+		"printWidth": 140,
 		"plugins": [
 			"prettier-plugin-solidity"
 		],
@@ -25,7 +25,7 @@
 				"files": "*.sol",
 				"options": {
 					"parser": "solidity-parse",
-					"printWidth": 100,
+					"printWidth": 140,
 					"tabWidth": 4,
 					"useTabs": false,
 					"singleQuote": false,

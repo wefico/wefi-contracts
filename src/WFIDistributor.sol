@@ -77,12 +77,7 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      * @param _wfiToken Address of the WFI token contract.
      * @param _launchTimestamp The timestamp from which distributions start.
      */
-    constructor(
-        address _newOwner,
-        IERC20 _wfiToken,
-        uint256 _launchTimestamp,
-        address _verifierAddress
-    ) Ownable(_newOwner) {
+    constructor(address _newOwner, IERC20 _wfiToken, uint256 _launchTimestamp, address _verifierAddress) Ownable(_newOwner) {
         require(address(_wfiToken) != address(0), "Invalid token address");
         require(_launchTimestamp >= block.timestamp, "Launch timestamp must be in the future");
 
@@ -102,18 +97,11 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      * @param validUntil The timestamp until which the claim is valid.
      * @param signature The bytes signature associated with the claim.
      */
-    function claimMiningRewards(
-        uint256 amount,
-        uint256 validUntil,
-        bytes memory signature
-    ) external whenNotPaused nonReentrant {
+    function claimMiningRewards(uint256 amount, uint256 validUntil, bytes memory signature) external whenNotPaused nonReentrant {
         // Verify the signature
         require(claims[signature].amount == 0, "Claim already exists");
         require(validUntil >= block.timestamp, "Claim expired");
-        require(
-            wfiToken.balanceOf(address(this)) >= amount,
-            "Not enough WFI available on the contract"
-        );
+        require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
         bytes32 messageHash = keccak256(
             // Sequence of arguments is important here
@@ -124,22 +112,14 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
 
         require(block.timestamp > launchTimestamp, "Distribution has not started yet");
 
-        uint256 claimable = _calculateMiningRewards();
+        uint256 claimable = totalUnlockedMiningRewards();
         require(claimable > 0, "No mining rewards to claim");
         require(claimable - totalMiningDistributed >= amount, "Amount exceeds claimable rewards");
-        require(
-            totalMiningDistributed + claimable <= MINING_REWARDS_POOL,
-            "Exceeds mining rewards pool"
-        );
+        require(totalMiningDistributed + amount <= MINING_REWARDS_POOL, "Exceeds mining rewards pool");
 
-        totalMiningDistributed += claimable;
+        totalMiningDistributed += amount;
         // Store claim data
-        claims[signature] = ClaimData({
-            claimedFrom: msg.sender,
-            timestamp: block.timestamp,
-            validUntil: validUntil,
-            amount: amount
-        });
+        claims[signature] = ClaimData({claimedFrom: msg.sender, timestamp: block.timestamp, validUntil: validUntil, amount: amount});
         miningClaims[msg.sender].push(signature);
 
         // Transfer the calculated reward to the caller
@@ -152,38 +132,21 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      * @notice Calculates the claimable mining rewards based on the time elapsed and emission rates.
      * @return totalReward The total mining rewards claimable by the caller.
      */
-    function _calculateMiningRewards() internal view returns (uint256) {
+    function totalUnlockedMiningRewards() public view returns (uint256) {
         uint256 totalReward = 0;
-        uint256 lastUpdate = launchTimestamp;
-
-        uint256 intervalStart = launchTimestamp;
-
+        uint256 timeElapsed = block.timestamp > launchTimestamp ? block.timestamp - launchTimestamp : 0;
+        uint256 timeLeft = timeElapsed;
         for (uint256 i = 0; i < intervalDurations.length; i++) {
-            uint256 intervalEnd = intervalStart + intervalDurations[i];
-
-            if (lastUpdate >= intervalEnd) {
-                // Skip past intervals
-                intervalStart = intervalEnd;
-                continue;
+            uint256 intervalTime = intervalDurations[i];
+            uint256 rewardRate = tokensPerSecond[i];
+            if (timeLeft >= intervalTime) {
+                totalReward += rewardRate * intervalTime;
+                timeLeft -= intervalTime;
+            } else {
+                totalReward += rewardRate * timeLeft;
+                break; // No more time left to account for
             }
-
-            uint256 effectiveStart = lastUpdate > intervalStart ? lastUpdate : intervalStart;
-            uint256 effectiveEnd = block.timestamp < intervalEnd ? block.timestamp : intervalEnd;
-
-            if (effectiveEnd > effectiveStart) {
-                uint256 duration = effectiveEnd - effectiveStart;
-                uint256 reward = duration * tokensPerSecond[i];
-                totalReward += reward;
-            }
-
-            if (block.timestamp <= intervalEnd) {
-                // No need to check further intervals
-                break;
-            }
-
-            intervalStart = intervalEnd;
         }
-
         return totalReward;
     }
 
@@ -193,18 +156,11 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      * @param validUntil The timestamp until which the claim is valid.
      * @param signature The bytes signature associated with the claim.
      */
-    function claimReferralRewards(
-        uint256 amount,
-        uint256 validUntil,
-        bytes memory signature
-    ) external whenNotPaused nonReentrant {
+    function claimReferralRewards(uint256 amount, uint256 validUntil, bytes memory signature) external whenNotPaused nonReentrant {
         // Verify the signature
         require(claims[signature].amount == 0, "Claim already exists");
         require(validUntil >= block.timestamp, "Claim expired");
-        require(
-            wfiToken.balanceOf(address(this)) >= amount,
-            "Not enough WFI available on the contract"
-        );
+        require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
         bytes32 messageHash = keccak256(
             // Sequence of arguments is important here
@@ -215,22 +171,14 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
 
         require(block.timestamp > launchTimestamp, "Distribution has not started yet");
 
-        uint256 claimable = _calculateReferralRewards();
+        uint256 claimable = totalUnlockedReferralRewards();
         require(claimable > 0, "No referral rewards to claim");
         require(claimable - totalReferralDistributed >= amount, "Amount exceeds claimable rewards");
-        require(
-            totalReferralDistributed + claimable <= REFERRAL_STAKING_POOL,
-            "Exceeds referral/staking rewards pool"
-        );
+        require(totalReferralDistributed + amount <= REFERRAL_STAKING_POOL, "Exceeds referral/staking rewards pool");
 
-        totalReferralDistributed += claimable;
+        totalReferralDistributed += amount;
         // Store claim data
-        claims[signature] = ClaimData({
-            claimedFrom: msg.sender,
-            timestamp: block.timestamp,
-            validUntil: validUntil,
-            amount: amount
-        });
+        claims[signature] = ClaimData({claimedFrom: msg.sender, timestamp: block.timestamp, validUntil: validUntil, amount: amount});
         referralClaims[msg.sender].push(signature);
 
         // Transfer the calculated reward to the caller
@@ -243,23 +191,13 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      * @notice Calculates the claimable referral and staking rewards based on linear vesting.
      * @return claimable The total referral and staking rewards claimable by the caller.
      */
-    function _calculateReferralRewards() internal view returns (uint256) {
-        uint256 elapsedTime = block.timestamp > launchTimestamp
-            ? block.timestamp - launchTimestamp
-            : 0;
-
+    function totalUnlockedReferralRewards() public view returns (uint256) {
+        uint256 elapsedTime = block.timestamp > launchTimestamp ? block.timestamp - launchTimestamp : 0;
         if (elapsedTime > REFERRAL_VESTING_DURATION) {
             elapsedTime = REFERRAL_VESTING_DURATION;
         }
-
-        uint256 totalVestedAmount = (REFERRAL_STAKING_POOL * elapsedTime) /
-            REFERRAL_VESTING_DURATION;
-
-        uint256 claimable = totalVestedAmount > totalReferralDistributed
-            ? totalVestedAmount - totalReferralDistributed
-            : 0;
-
-        return claimable;
+        uint256 totalVestedAmount = (REFERRAL_STAKING_POOL * elapsedTime) / REFERRAL_VESTING_DURATION;
+        return totalVestedAmount;
     }
 
     /**
@@ -284,9 +222,7 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
         require(to != address(0), "Invalid address");
         require(_isDistributionPeriodOver(), "Distribution period is not over yet");
 
-        uint256 remainingMiningTokens = MINING_REWARDS_POOL > totalMiningDistributed
-            ? MINING_REWARDS_POOL - totalMiningDistributed
-            : 0;
+        uint256 remainingMiningTokens = MINING_REWARDS_POOL > totalMiningDistributed ? MINING_REWARDS_POOL - totalMiningDistributed : 0;
         uint256 remainingReferralTokens = REFERRAL_STAKING_POOL > totalReferralDistributed
             ? REFERRAL_STAKING_POOL - totalReferralDistributed
             : 0;
