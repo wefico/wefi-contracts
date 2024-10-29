@@ -52,6 +52,10 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
     // Tracking variable for referral and staking rewards
     uint256 public totalReferralDistributed;
 
+    // Variable for migration to Wechain blockchain
+    uint256 public blockchainMigrationLockTimestamp = 0;
+    uint256 public blockchainMigrationTimestamp = 0;
+
     // Struct to store claim data per user
     struct ClaimData {
         address claimedFrom;
@@ -71,6 +75,7 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
     event MiningRewardsClaimed(address indexed user, uint256 amount);
     event ReferralRewardsClaimed(address indexed user, uint256 amount);
     event RemainingTokensTransferred(address indexed to, uint256 amount);
+    event BlockchainMigrationStarted(uint256 timestamp);
 
     /**
      * @dev Constructor sets the WFI token address and launch timestamp.
@@ -134,7 +139,9 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      */
     function totalUnlockedMiningRewards() public view returns (uint256) {
         uint256 totalReward = 0;
-        uint256 timeElapsed = block.timestamp > launchTimestamp ? block.timestamp - launchTimestamp : 0;
+        // If blockchainMigrationTimestamp is set, total unlocked will be only until this timestamp
+        uint256 currentTimestamp = blockchainMigrationTimestamp != 0 ? blockchainMigrationLockTimestamp : block.timestamp;
+        uint256 timeElapsed = currentTimestamp > launchTimestamp ? currentTimestamp - launchTimestamp : 0;
         uint256 timeLeft = timeElapsed;
         for (uint256 i = 0; i < intervalDurations.length; i++) {
             uint256 intervalTime = intervalDurations[i];
@@ -192,7 +199,9 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
      * @return claimable The total referral and staking rewards claimable by the caller.
      */
     function totalUnlockedReferralRewards() public view returns (uint256) {
-        uint256 elapsedTime = block.timestamp > launchTimestamp ? block.timestamp - launchTimestamp : 0;
+        // If blockchainMigrationTimestamp is set, total unlocked will be only until this timestamp
+        uint256 currentTimestamp = blockchainMigrationTimestamp != 0 ? blockchainMigrationLockTimestamp : block.timestamp;
+        uint256 elapsedTime = currentTimestamp > launchTimestamp ? currentTimestamp - launchTimestamp : 0;
         if (elapsedTime > REFERRAL_VESTING_DURATION) {
             elapsedTime = REFERRAL_VESTING_DURATION;
         }
@@ -215,17 +224,29 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @notice Transfers any remaining tokens to a specified address after the distribution period.
+     * @notice Sets the timestamp for the blockchain migration.
+     * @param timestamp The timestamp for the blockchain migration.
+     */
+    function setBlockchainMigrationTimestamp(uint256 timestamp) external onlyOwner {
+        require(timestamp >= block.timestamp + 7 days, "Timestamp must be at least 7 days in the future, to let users claim their rewards");
+
+        blockchainMigrationLockTimestamp = block.timestamp;
+        blockchainMigrationTimestamp = timestamp;
+
+        emit BlockchainMigrationStarted(timestamp);
+    }
+
+    /**
+     * @notice Transfers any remaining tokens to a specified address at the blockchain migration period.
      * @param to The address to receive the remaining tokens.
      */
     function transferRemainingTokens(address to) external onlyOwner {
         require(to != address(0), "Invalid address");
-        require(_isDistributionPeriodOver(), "Distribution period is not over yet");
+        require(blockchainMigrationTimestamp != 0, "Blockchain migration has not been set yet");
+        require(block.timestamp > blockchainMigrationTimestamp, "Blockchain migration has not been completed yet");
 
-        uint256 remainingMiningTokens = MINING_REWARDS_POOL > totalMiningDistributed ? MINING_REWARDS_POOL - totalMiningDistributed : 0;
-        uint256 remainingReferralTokens = REFERRAL_STAKING_POOL > totalReferralDistributed
-            ? REFERRAL_STAKING_POOL - totalReferralDistributed
-            : 0;
+        uint256 remainingMiningTokens = totalUnlockedMiningRewards() - totalMiningDistributed;
+        uint256 remainingReferralTokens = totalUnlockedReferralRewards() - totalReferralDistributed;
 
         uint256 totalRemainingTokens = remainingMiningTokens + remainingReferralTokens;
         require(totalRemainingTokens > 0, "No remaining tokens to transfer");
@@ -233,15 +254,5 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
         wfiToken.transfer(to, totalRemainingTokens);
 
         emit RemainingTokensTransferred(to, totalRemainingTokens);
-    }
-
-    /**
-     * @notice Checks if the distribution periods are over for both mining and referral rewards.
-     * @return True if both distribution periods are over, otherwise false.
-     */
-    function _isDistributionPeriodOver() internal view returns (bool) {
-        bool miningOver = block.timestamp >= launchTimestamp + miningRewardsDuration;
-        bool referralOver = block.timestamp >= launchTimestamp + REFERRAL_VESTING_DURATION;
-        return miningOver && referralOver;
     }
 }

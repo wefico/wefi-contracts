@@ -240,25 +240,44 @@ contract WFIDistributorTest is Test {
      * @notice Test transferring remaining tokens after distribution period.
      */
     function testTransferRemainingTokens() public {
-        // Warp to after distribution periods
-        uint256 miningDuration = distributorContract.miningRewardsDuration();
-        uint256 referralDuration = distributorContract.REFERRAL_VESTING_DURATION();
-        uint256 maxDuration = miningDuration > referralDuration ? miningDuration : referralDuration;
-
-        vm.warp(launchTimestamp + maxDuration + 1);
+        vm.warp(launchTimestamp + 1);
 
         // Attempt to transfer remaining tokens
         vm.startPrank(owner);
+        vm.expectRevert("Blockchain migration has not been set yet");
+        distributorContract.transferRemainingTokens(treasury);
+
+        uint256 totalUnlockedMiningBefore = distributorContract.totalUnlockedMiningRewards();
+        uint256 totalUnlockedReferralsBefore = distributorContract.totalUnlockedReferralRewards();
+        console.log("totalUnlockedMiningBefore", totalUnlockedMiningBefore);
+        console.log("totalUnlockedReferralsBefore", totalUnlockedReferralsBefore);
+        assertEq(totalUnlockedMiningBefore, distributorContract.tokensPerSecond(0));
+        assertEq(totalUnlockedReferralsBefore, distributorContract.REFERRAL_STAKING_POOL() / 730 days);
+
+        vm.expectRevert("Timestamp must be at least 7 days in the future, to let users claim their rewards");
+        distributorContract.setBlockchainMigrationTimestamp(block.timestamp + 1 days);
+
+        distributorContract.setBlockchainMigrationTimestamp(block.timestamp + 7 days);
+
+        vm.expectRevert("Blockchain migration has not been completed yet");
+        distributorContract.transferRemainingTokens(treasury);
+
+        vm.warp(block.timestamp + 7 days + 1);
+
+        uint256 totalUnlockedMiningAfter = distributorContract.totalUnlockedMiningRewards();
+        uint256 totalUnlockedReferralsAfter = distributorContract.totalUnlockedReferralRewards();
+        console.log("totalUnlockedMiningAfter", totalUnlockedMiningAfter);
+        console.log("totalUnlockedReferralsAfter", totalUnlockedReferralsAfter);
+        assertEq(totalUnlockedMiningAfter, totalUnlockedMiningBefore);
+        assertEq(totalUnlockedReferralsAfter, totalUnlockedReferralsBefore);
+
         distributorContract.transferRemainingTokens(treasury);
         vm.stopPrank();
 
         // Check treasury balance
         uint256 treasuryBalance = wfiToken.balanceOf(treasury);
-        assertTrue(treasuryBalance > 0);
-
-        // Ensure all tokens have been transferred
-        uint256 contractBalance = wfiToken.balanceOf(address(distributorContract));
-        assertEq(contractBalance, 0);
+        console.log("treasuryBalance", treasuryBalance);
+        assertEq(treasuryBalance, totalUnlockedMiningBefore + totalUnlockedReferralsBefore);
     }
 
     /**
