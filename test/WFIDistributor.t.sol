@@ -74,9 +74,9 @@ contract WFIDistributorTest is Test {
     /**
      * @notice Get a signature for testing purposes.
      */
-    function getSignature(address claimedFrom, uint256 amount, uint256 validUntil) public view returns (bytes memory) {
+    function getSignature(address claimedFrom, uint256 amount, uint256 validUntil, uint8 claimType) public view returns (bytes memory) {
         // Verify if provided arguments and signature are valid and matching
-        bytes32 msgHash = MessageHashUtils.toEthSignedMessageHash(keccak256(abi.encodePacked(claimedFrom, amount, validUntil)));
+        bytes32 msgHash = MessageHashUtils.toEthSignedMessageHash(keccak256(abi.encodePacked(claimedFrom, amount, validUntil, claimType)));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, msgHash);
         bytes memory signature = abi.encodePacked(r, s, v);
         assertEq(signature.length, 65);
@@ -103,7 +103,7 @@ contract WFIDistributorTest is Test {
         vm.startPrank(user);
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil);
+        bytes memory signature = getSignature(user, amount, validUntil, 0);
         vm.expectRevert("Distribution has not started yet");
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -116,7 +116,7 @@ contract WFIDistributorTest is Test {
         vm.startPrank(user);
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil);
+        bytes memory signature = getSignature(user, amount, validUntil, 1);
         vm.expectRevert("Distribution has not started yet");
         distributorContract.claimReferralRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -135,7 +135,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount = expectedReward;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil);
+        bytes memory signature = getSignature(user, amount, validUntil, 0);
         vm.startPrank(user);
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -168,7 +168,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount = expectedReward;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil);
+        bytes memory signature = getSignature(user, amount, validUntil, 1);
         vm.startPrank(user);
         distributorContract.claimReferralRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -201,7 +201,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount1 = 100 * 1e18;
         uint256 validUntil1 = block.timestamp + 100;
-        bytes memory signature1 = getSignature(user, amount1, validUntil1);
+        bytes memory signature1 = getSignature(user, amount1, validUntil1, 0);
 
         // Attempt to claim rewards while paused
         vm.startPrank(user);
@@ -223,7 +223,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount2 = 10 * 1e18;
         uint256 validUntil2 = block.timestamp + 10;
-        bytes memory signature2 = getSignature(user, amount2, validUntil2);
+        bytes memory signature2 = getSignature(user, amount2, validUntil2, 1);
         distributorContract.claimReferralRewards(amount2, validUntil2, user, signature2);
         vm.stopPrank();
 
@@ -306,7 +306,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil);
+        bytes memory signature = getSignature(user, amount, validUntil, 0);
         vm.startPrank(user);
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -365,7 +365,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim the claimable amount
                 uint256 amount = claimable;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil);
+                bytes memory signature = getSignature(user, amount, validUntil, 0);
                 vm.startPrank(user);
                 distributorContract.claimMiningRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
@@ -386,7 +386,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim any amount should revert
                 uint256 amount = 1 * 1e18;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil);
+                bytes memory signature = getSignature(user, amount, validUntil, 0);
                 vm.startPrank(user);
 
                 // Adjust expected revert message based on the timestamp
@@ -442,7 +442,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim the claimable amount
                 uint256 amount = claimable;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil);
+                bytes memory signature = getSignature(user, amount, validUntil, 1);
                 vm.startPrank(user);
                 distributorContract.claimReferralRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
@@ -463,7 +463,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim any amount should revert
                 uint256 amount = 1 * 1e18;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil);
+                bytes memory signature = getSignature(user, amount, validUntil, 1);
                 vm.startPrank(user);
 
                 // Adjust expected revert message based on the timestamp

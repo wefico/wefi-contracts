@@ -111,9 +111,10 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
         require(validUntil >= block.timestamp, "Claim expired");
         require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
+        uint8 claimType = 0;
         bytes32 messageHash = keccak256(
             // Sequence of arguments is important here
-            abi.encodePacked(receiverAddress, amount, validUntil)
+            abi.encodePacked(receiverAddress, amount, validUntil, claimType)
         ).toEthSignedMessageHash();
         address signer = messageHash.recover(signature);
         require(signer == verifierAddress, "Invalid signature");
@@ -178,9 +179,10 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
         require(validUntil >= block.timestamp, "Claim expired");
         require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
+        uint8 claimType = 1;
         bytes32 messageHash = keccak256(
             // Sequence of arguments is important here
-            abi.encodePacked(receiverAddress, amount, validUntil)
+            abi.encodePacked(receiverAddress, amount, validUntil, claimType)
         ).toEthSignedMessageHash();
         address signer = messageHash.recover(signature);
         require(signer == verifierAddress, "Invalid signature");
