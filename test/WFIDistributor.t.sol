@@ -105,7 +105,7 @@ contract WFIDistributorTest is Test {
         uint256 validUntil = block.timestamp + 100;
         bytes memory signature = getSignature(user, amount, validUntil);
         vm.expectRevert("Distribution has not started yet");
-        distributorContract.claimMiningRewards(amount, validUntil, signature);
+        distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
     }
 
@@ -118,7 +118,7 @@ contract WFIDistributorTest is Test {
         uint256 validUntil = block.timestamp + 100;
         bytes memory signature = getSignature(user, amount, validUntil);
         vm.expectRevert("Distribution has not started yet");
-        distributorContract.claimReferralRewards(amount, validUntil, signature);
+        distributorContract.claimReferralRewards(amount, validUntil, user, signature);
         vm.stopPrank();
     }
 
@@ -137,7 +137,7 @@ contract WFIDistributorTest is Test {
         uint256 validUntil = block.timestamp + 100;
         bytes memory signature = getSignature(user, amount, validUntil);
         vm.startPrank(user);
-        distributorContract.claimMiningRewards(amount, validUntil, signature);
+        distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
 
         // Check user's WFI token balance
@@ -149,10 +149,8 @@ contract WFIDistributorTest is Test {
         assertEq(totalDistributed, expectedReward);
 
         // Check claim data
-        (address claimedFrom, uint256 claimTimestamp, uint256 claimValidUntil, uint256 claimAmount) = distributorContract.claims(signature);
-        assertEq(claimedFrom, user);
-        assertEq(claimTimestamp, block.timestamp);
-        assertEq(claimValidUntil, validUntil);
+        (address receiver, uint256 claimAmount) = distributorContract.claims(signature);
+        assertEq(receiver, user);
         assertEq(claimAmount, amount);
     }
 
@@ -172,7 +170,7 @@ contract WFIDistributorTest is Test {
         uint256 validUntil = block.timestamp + 100;
         bytes memory signature = getSignature(user, amount, validUntil);
         vm.startPrank(user);
-        distributorContract.claimReferralRewards(amount, validUntil, signature);
+        distributorContract.claimReferralRewards(amount, validUntil, user, signature);
         vm.stopPrank();
 
         // Check user's WFI token balance
@@ -184,10 +182,8 @@ contract WFIDistributorTest is Test {
         assertEq(totalDistributed, expectedReward);
 
         // Check claim data
-        (address claimedFrom, uint256 claimTimestamp, uint256 claimValidUntil, uint256 claimAmount) = distributorContract.claims(signature);
-        assertEq(claimedFrom, user);
-        assertEq(claimTimestamp, block.timestamp);
-        assertEq(claimValidUntil, validUntil);
+        (address receiver, uint256 claimAmount) = distributorContract.claims(signature);
+        assertEq(receiver, user);
         assertEq(claimAmount, amount);
     }
 
@@ -210,10 +206,10 @@ contract WFIDistributorTest is Test {
         // Attempt to claim rewards while paused
         vm.startPrank(user);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        distributorContract.claimMiningRewards(amount1, validUntil1, signature1);
+        distributorContract.claimMiningRewards(amount1, validUntil1, user, signature1);
 
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        distributorContract.claimReferralRewards(amount1, validUntil1, signature1);
+        distributorContract.claimReferralRewards(amount1, validUntil1, user, signature1);
         vm.stopPrank();
 
         // Unpause the contract
@@ -223,12 +219,12 @@ contract WFIDistributorTest is Test {
 
         // Claim rewards after unpausing
         vm.startPrank(user);
-        distributorContract.claimMiningRewards(amount1, validUntil1, signature1);
+        distributorContract.claimMiningRewards(amount1, validUntil1, user, signature1);
 
         uint256 amount2 = 10 * 1e18;
         uint256 validUntil2 = block.timestamp + 10;
         bytes memory signature2 = getSignature(user, amount2, validUntil2);
-        distributorContract.claimReferralRewards(amount2, validUntil2, signature2);
+        distributorContract.claimReferralRewards(amount2, validUntil2, user, signature2);
         vm.stopPrank();
 
         // Check balances to ensure rewards were received
@@ -312,13 +308,13 @@ contract WFIDistributorTest is Test {
         uint256 validUntil = block.timestamp + 100;
         bytes memory signature = getSignature(user, amount, validUntil);
         vm.startPrank(user);
-        distributorContract.claimMiningRewards(amount, validUntil, signature);
+        distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
 
         // Attempt to claim again should result in a revert
         vm.startPrank(user);
         vm.expectRevert("Claim already exists");
-        distributorContract.claimMiningRewards(amount, validUntil, signature);
+        distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
 
         // Total distributed should equal the user's balance
@@ -371,7 +367,7 @@ contract WFIDistributorTest is Test {
                 uint256 validUntil = block.timestamp + 1000;
                 bytes memory signature = getSignature(user, amount, validUntil);
                 vm.startPrank(user);
-                distributorContract.claimMiningRewards(amount, validUntil, signature);
+                distributorContract.claimMiningRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
 
                 // Update tracking variables
@@ -400,7 +396,7 @@ contract WFIDistributorTest is Test {
                     vm.expectRevert("Amount exceeds claimable rewards");
                 }
 
-                distributorContract.claimMiningRewards(amount, validUntil, signature);
+                distributorContract.claimMiningRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
             }
         }
@@ -414,7 +410,7 @@ contract WFIDistributorTest is Test {
         // Define test timestamps relative to launchTimestamp
         timestampReward[] memory testTimestamps = new timestampReward[](5);
         testTimestamps[0] = timestampReward(0, 0);
-        testTimestamps[1] = timestampReward(1, 2_186_882_198_122_780_314);
+        testTimestamps[1] = timestampReward(1, 2_028_333_238_203_957_382);
         testTimestamps[2] = timestampReward(
             distributorContract.REFERRAL_VESTING_DURATION() / 4,
             distributorContract.REFERRAL_STAKING_POOL() / 4
@@ -448,7 +444,7 @@ contract WFIDistributorTest is Test {
                 uint256 validUntil = block.timestamp + 1000;
                 bytes memory signature = getSignature(user, amount, validUntil);
                 vm.startPrank(user);
-                distributorContract.claimReferralRewards(amount, validUntil, signature);
+                distributorContract.claimReferralRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
 
                 // Update tracking variables
@@ -477,7 +473,7 @@ contract WFIDistributorTest is Test {
                     vm.expectRevert("Amount exceeds claimable rewards");
                 }
 
-                distributorContract.claimReferralRewards(amount, validUntil, signature);
+                distributorContract.claimReferralRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
             }
         }
