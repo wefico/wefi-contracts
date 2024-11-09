@@ -257,6 +257,10 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard, EIP712 {
         uint256 totalRemainingTokens = remainingMiningTokens + remainingReferralTokens;
         require(totalRemainingTokens > 0, "No remaining tokens to transfer");
 
+        // Update the distributed totals to prevent multiple withdrawals
+        totalMiningDistributed += remainingMiningTokens;
+        totalReferralDistributed += remainingReferralTokens;
+
         wfiToken.transfer(to, totalRemainingTokens);
 
         emit RemainingTokensTransferred(to, totalRemainingTokens);

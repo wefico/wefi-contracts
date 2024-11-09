@@ -482,4 +482,32 @@ contract WFIDistributorTest is Test {
             }
         }
     }
+
+    function testCannotTransferRemainingTokensMultipleTimes() public {
+        vm.warp(launchTimestamp + 1);
+
+        // Set the blockchain migration timestamp
+        vm.startPrank(owner);
+        distributorContract.setBlockchainMigrationTimestamp(block.timestamp + 7 days);
+        vm.stopPrank();
+
+        // Warp past the migration timestamp
+        vm.warp(block.timestamp + 7 days + 1);
+
+        // Transfer remaining tokens the first time
+        vm.startPrank(owner);
+        distributorContract.transferRemainingTokens(treasury);
+        vm.stopPrank();
+
+        // Attempt to transfer remaining tokens again
+        vm.startPrank(owner);
+        vm.expectRevert("No remaining tokens to transfer");
+        distributorContract.transferRemainingTokens(treasury);
+        vm.stopPrank();
+
+        // Check that the treasury's balance hasn't increased further
+        uint256 treasuryBalanceAfter = wfiToken.balanceOf(treasury);
+        console.log("treasuryBalanceAfter", treasuryBalanceAfter);
+        // Ensure that the balance matches the amount transferred the first time
+    }
 }
