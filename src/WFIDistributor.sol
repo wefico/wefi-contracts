@@ -7,14 +7,14 @@ pragma solidity 0.8.20;
  * It handles mining rewards with a halving schedule and referral/staking rewards with linear vesting over 2 years.
  */
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract WFIDistributor is Ownable, Pausable, ReentrancyGuard, EIP712 {
+contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     using ECDSA for bytes32;
 
     // WFI token interface
