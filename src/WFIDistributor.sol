@@ -19,7 +19,7 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     // WFI token interface
     IERC20 public immutable wfiToken;
-    address public verifierAddress;
+    address public immutable verifierAddress;
 
     // Launch timestamp from which all time-based calculations begin
     uint256 public immutable launchTimestamp;
