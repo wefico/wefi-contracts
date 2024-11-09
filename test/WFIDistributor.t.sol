@@ -108,7 +108,7 @@ contract WFIDistributorTest is Test {
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
         bytes memory signature = getSignature(user, amount, validUntil, true);
-        vm.expectRevert("Distribution has not started yet");
+        vm.expectRevert(WFIDistributor.DistributionNotStarted.selector);
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
     }
@@ -121,7 +121,7 @@ contract WFIDistributorTest is Test {
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
         bytes memory signature = getSignature(user, amount, validUntil, false);
-        vm.expectRevert("Distribution has not started yet");
+        vm.expectRevert(WFIDistributor.DistributionNotStarted.selector);
         distributorContract.claimReferralRewards(amount, validUntil, user, signature);
         vm.stopPrank();
     }
@@ -244,7 +244,7 @@ contract WFIDistributorTest is Test {
 
         // Attempt to transfer remaining tokens
         vm.startPrank(owner);
-        vm.expectRevert("Blockchain migration has not been set yet");
+        vm.expectRevert(WFIDistributor.MigrationNotSet.selector);
         distributorContract.transferRemainingTokens(treasury);
 
         uint256 totalUnlockedMiningBefore = distributorContract.totalUnlockedMiningRewards();
@@ -254,12 +254,12 @@ contract WFIDistributorTest is Test {
         assertEq(totalUnlockedMiningBefore, distributorContract.tokensPerSecond(0));
         assertEq(totalUnlockedReferralsBefore, distributorContract.REFERRAL_STAKING_POOL() / 730 days);
 
-        vm.expectRevert("Timestamp must be at least 7 days in the future, to let users claim their rewards");
+        vm.expectRevert(WFIDistributor.IncorrectMigrationTimestamp.selector);
         distributorContract.setBlockchainMigrationTimestamp(block.timestamp + 1 days);
 
         distributorContract.setBlockchainMigrationTimestamp(block.timestamp + 7 days);
 
-        vm.expectRevert("Blockchain migration has not been completed yet");
+        vm.expectRevert(WFIDistributor.MigrationNotCompleted.selector);
         distributorContract.transferRemainingTokens(treasury);
 
         vm.warp(block.timestamp + 7 days + 1);
@@ -317,7 +317,7 @@ contract WFIDistributorTest is Test {
 
         // Attempt to claim again should result in a revert
         vm.startPrank(user);
-        vm.expectRevert("Claim already exists");
+        vm.expectRevert(WFIDistributor.ClaimAlreadyExists.selector);
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
 
@@ -395,9 +395,9 @@ contract WFIDistributorTest is Test {
 
                 // Adjust expected revert message based on the timestamp
                 if (block.timestamp <= launchTimestamp) {
-                    vm.expectRevert("Distribution has not started yet");
+                    vm.expectRevert(WFIDistributor.DistributionNotStarted.selector);
                 } else {
-                    vm.expectRevert("Amount exceeds claimable rewards");
+                    vm.expectRevert(WFIDistributor.ExceedsClaimableRewards.selector);
                 }
 
                 distributorContract.claimMiningRewards(amount, validUntil, user, signature);
@@ -472,9 +472,9 @@ contract WFIDistributorTest is Test {
 
                 // Adjust expected revert message based on the timestamp
                 if (block.timestamp <= launchTimestamp) {
-                    vm.expectRevert("Distribution has not started yet");
+                    vm.expectRevert(WFIDistributor.DistributionNotStarted.selector);
                 } else {
-                    vm.expectRevert("Amount exceeds claimable rewards");
+                    vm.expectRevert(WFIDistributor.ExceedsClaimableRewards.selector);
                 }
 
                 distributorContract.claimReferralRewards(amount, validUntil, user, signature);
@@ -501,7 +501,7 @@ contract WFIDistributorTest is Test {
 
         // Attempt to transfer remaining tokens again
         vm.startPrank(owner);
-        vm.expectRevert("No remaining tokens to transfer");
+        vm.expectRevert(WFIDistributor.NoRemainingTokens.selector);
         distributorContract.transferRemainingTokens(treasury);
         vm.stopPrank();
 

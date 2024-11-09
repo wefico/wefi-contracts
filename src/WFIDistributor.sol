@@ -17,6 +17,27 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     using ECDSA for bytes32;
 
+    // Custom Errors
+    error InvalidTokenAddress(address tokenAddress);
+    error InvalidVerifierAddress(address verifierAddress);
+    error ClaimAlreadyExists();
+    error ClaimExpired();
+    error InsufficientContractBalance();
+    error InvalidSignature();
+    error DistributionNotStarted();
+    error NoMiningRewards();
+    error ExceedsClaimableRewards();
+    error ExceedsMiningRewardsPool();
+    error NoReferralRewards();
+    error ExceedsClaimableReferralRewards();
+    error ExceedsReferralStakingPool();
+    error IncorrectMigrationTimestamp();
+    error MigrationTimestampAlreadySet();
+    error InvalidAddress();
+    error MigrationNotSet();
+    error MigrationNotCompleted();
+    error NoRemainingTokens();
+
     // WFI token interface
     IERC20 public immutable wfiToken;
     address public immutable verifierAddress;
@@ -86,8 +107,12 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         uint256 _launchTimestamp,
         address _verifierAddress
     ) Ownable(_newOwner) EIP712("WFIDistributor", "1") {
-        require(address(_wfiToken) != address(0), "Invalid token address");
-        require(address(_verifierAddress) != address(0), "Invalid verifier address");
+        if (address(_wfiToken) == address(0)) {
+            revert InvalidTokenAddress(address(_wfiToken));
+        }
+        if (address(_verifierAddress) == address(0)) {
+            revert InvalidVerifierAddress(address(_verifierAddress));
+        }
 
         verifierAddress = _verifierAddress;
         wfiToken = _wfiToken;
@@ -113,18 +138,34 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes memory signature
     ) external whenNotPaused nonReentrant {
         // Verify the signature
-        require(!isSignatureUsed[signature], "Claim already exists");
-        require(validUntil >= block.timestamp, "Claim expired");
-        require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
+        if (isSignatureUsed[signature]) {
+            revert ClaimAlreadyExists();
+        }
+        if (validUntil < block.timestamp) {
+            revert ClaimExpired();
+        }
+        if (wfiToken.balanceOf(address(this)) < amount) {
+            revert InsufficientContractBalance();
+        }
         // Verify if provided arguments and signature are valid and matching
-        require(_verifyClaim(receiverAddress, amount, validUntil, true, signature), "Invalid signature");
+        if (!_verifyClaim(receiverAddress, amount, validUntil, true, signature)) {
+            revert InvalidSignature();
+        }
 
-        require(block.timestamp > launchTimestamp, "Distribution has not started yet");
+        if (block.timestamp <= launchTimestamp) {
+            revert DistributionNotStarted();
+        }
 
         uint256 claimable = totalUnlockedMiningRewards();
-        require(claimable > 0, "No mining rewards to claim");
-        require(claimable - totalMiningDistributed >= amount, "Amount exceeds claimable rewards");
-        require(totalMiningDistributed + amount <= MINING_REWARDS_POOL, "Exceeds mining rewards pool");
+        if (claimable <= 0) {
+            revert NoMiningRewards();
+        }
+        if (claimable - totalMiningDistributed < amount) {
+            revert ExceedsClaimableRewards();
+        }
+        if (totalMiningDistributed + amount > MINING_REWARDS_POOL) {
+            revert ExceedsMiningRewardsPool();
+        }
 
         totalMiningDistributed += amount;
         // Store claim data
@@ -175,18 +216,34 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes memory signature
     ) external whenNotPaused nonReentrant {
         // Verify the signature
-        require(!isSignatureUsed[signature], "Claim already exists");
-        require(validUntil >= block.timestamp, "Claim expired");
-        require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
+        if (isSignatureUsed[signature]) {
+            revert ClaimAlreadyExists();
+        }
+        if (validUntil < block.timestamp) {
+            revert ClaimExpired();
+        }
+        if (wfiToken.balanceOf(address(this)) < amount) {
+            revert InsufficientContractBalance();
+        }
         // Verify if provided arguments and signature are valid and matching
-        require(_verifyClaim(receiverAddress, amount, validUntil, false, signature), "Invalid signature");
+        if (!_verifyClaim(receiverAddress, amount, validUntil, false, signature)) {
+            revert InvalidSignature();
+        }
 
-        require(block.timestamp > launchTimestamp, "Distribution has not started yet");
+        if (block.timestamp <= launchTimestamp) {
+            revert DistributionNotStarted();
+        }
 
         uint256 claimable = totalUnlockedReferralRewards();
-        require(claimable > 0, "No referral rewards to claim");
-        require(claimable - totalReferralDistributed >= amount, "Amount exceeds claimable rewards");
-        require(totalReferralDistributed + amount <= REFERRAL_STAKING_POOL, "Exceeds referral/staking rewards pool");
+        if (claimable <= 0) {
+            revert NoReferralRewards();
+        }
+        if (claimable - totalReferralDistributed < amount) {
+            revert ExceedsClaimableReferralRewards();
+        }
+        if (totalReferralDistributed + amount > REFERRAL_STAKING_POOL) {
+            revert ExceedsReferralStakingPool();
+        }
 
         totalReferralDistributed += amount;
         // Store claim data
@@ -233,8 +290,12 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
      * @param timestamp The timestamp for the blockchain migration.
      */
     function setBlockchainMigrationTimestamp(uint256 timestamp) external onlyOwner {
-        require(timestamp >= block.timestamp + 7 days, "Timestamp must be at least 7 days in the future, to let users claim their rewards");
-        require(blockchainMigrationTimestamp == 0, "Can be called only one time");
+        if (timestamp < block.timestamp + 7 days) {
+            revert IncorrectMigrationTimestamp();
+        }
+        if (blockchainMigrationTimestamp != 0) {
+            revert MigrationTimestampAlreadySet();
+        }
 
         blockchainMigrationLockTimestamp = block.timestamp;
         blockchainMigrationTimestamp = timestamp;
@@ -247,15 +308,23 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
      * @param to The address to receive the remaining tokens.
      */
     function transferRemainingTokens(address to) external onlyOwner {
-        require(to != address(0), "Invalid address");
-        require(blockchainMigrationTimestamp != 0, "Blockchain migration has not been set yet");
-        require(block.timestamp > blockchainMigrationTimestamp, "Blockchain migration has not been completed yet");
+        if (to == address(0)) {
+            revert InvalidAddress();
+        }
+        if (blockchainMigrationTimestamp == 0) {
+            revert MigrationNotSet();
+        }
+        if (block.timestamp <= blockchainMigrationTimestamp) {
+            revert MigrationNotCompleted();
+        }
 
         uint256 remainingMiningTokens = totalUnlockedMiningRewards() - totalMiningDistributed;
         uint256 remainingReferralTokens = totalUnlockedReferralRewards() - totalReferralDistributed;
 
         uint256 totalRemainingTokens = remainingMiningTokens + remainingReferralTokens;
-        require(totalRemainingTokens > 0, "No remaining tokens to transfer");
+        if (totalRemainingTokens <= 0) {
+            revert NoRemainingTokens();
+        }
 
         // Update the distributed totals to prevent multiple withdrawals
         totalMiningDistributed += remainingMiningTokens;
