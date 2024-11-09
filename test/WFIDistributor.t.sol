@@ -36,7 +36,7 @@ contract WFIDistributorTest is Test {
     address public user = address(0x1234);
     address public treasury = address(0xDEAD);
     address public verifier;
-    uint256 privateKey = 0x1010101010101010101010101010101010101010101010101010101010101010;
+    uint256 public verifierPrivateKey = 0x1010101010101010101010101010101010101010101010101010101010101010;
 
     // Launch timestamp
     uint256 public launchTimestamp;
@@ -44,12 +44,16 @@ contract WFIDistributorTest is Test {
     // Constants
     uint256 public totalSupply = 1_000_000_000 * 1e18;
 
+    // Add EIP712 domain separator components
+    bytes32 constant DOMAIN_TYPE_HASH = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 constant CLAIM_TYPEHASH = keccak256("Claim(address receiver,uint256 amount,uint256 validUntil,bool isMiningClaim)");
+
     function setUp() public {
         // Label addresses for readability in test output
         vm.label(owner, "Owner");
         vm.label(user, "User");
         vm.label(treasury, "Treasury");
-        verifier = vm.addr(privateKey);
+        verifier = vm.addr(verifierPrivateKey);
         vm.label(verifier, "Verifier");
 
         // Deploy a mock WFI token and mint total supply to the owner
@@ -74,14 +78,14 @@ contract WFIDistributorTest is Test {
     /**
      * @notice Get a signature for testing purposes.
      */
-    function getSignature(address claimedFrom, uint256 amount, uint256 validUntil, uint8 claimType) public view returns (bytes memory) {
-        // Verify if provided arguments and signature are valid and matching
-        bytes32 msgHash = MessageHashUtils.toEthSignedMessageHash(keccak256(abi.encodePacked(claimedFrom, amount, validUntil, claimType)));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, msgHash);
-        bytes memory signature = abi.encodePacked(r, s, v);
-        assertEq(signature.length, 65);
-        console.logBytes(signature);
-        return signature;
+    function getSignature(address receiver, uint256 amount, uint256 validUntil, bool isMiningClaim) public view returns (bytes memory) {
+        bytes32 domainSeparator = keccak256(
+            abi.encode(DOMAIN_TYPE_HASH, keccak256("WFIDistributor"), keccak256("1"), block.chainid, address(distributorContract))
+        );
+        bytes32 structHash = keccak256(abi.encode(CLAIM_TYPEHASH, receiver, amount, validUntil, isMiningClaim));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(verifierPrivateKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 
     /**
@@ -103,7 +107,7 @@ contract WFIDistributorTest is Test {
         vm.startPrank(user);
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil, 0);
+        bytes memory signature = getSignature(user, amount, validUntil, true);
         vm.expectRevert("Distribution has not started yet");
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -116,7 +120,7 @@ contract WFIDistributorTest is Test {
         vm.startPrank(user);
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil, 1);
+        bytes memory signature = getSignature(user, amount, validUntil, false);
         vm.expectRevert("Distribution has not started yet");
         distributorContract.claimReferralRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -135,7 +139,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount = expectedReward;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil, 0);
+        bytes memory signature = getSignature(user, amount, validUntil, true);
         vm.startPrank(user);
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -168,7 +172,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount = expectedReward;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil, 1);
+        bytes memory signature = getSignature(user, amount, validUntil, false);
         vm.startPrank(user);
         distributorContract.claimReferralRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -201,7 +205,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount1 = 100 * 1e18;
         uint256 validUntil1 = block.timestamp + 100;
-        bytes memory signature1 = getSignature(user, amount1, validUntil1, 0);
+        bytes memory signature1 = getSignature(user, amount1, validUntil1, true);
 
         // Attempt to claim rewards while paused
         vm.startPrank(user);
@@ -223,7 +227,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount2 = 10 * 1e18;
         uint256 validUntil2 = block.timestamp + 10;
-        bytes memory signature2 = getSignature(user, amount2, validUntil2, 1);
+        bytes memory signature2 = getSignature(user, amount2, validUntil2, false);
         distributorContract.claimReferralRewards(amount2, validUntil2, user, signature2);
         vm.stopPrank();
 
@@ -306,7 +310,7 @@ contract WFIDistributorTest is Test {
 
         uint256 amount = 100 * 1e18;
         uint256 validUntil = block.timestamp + 100;
-        bytes memory signature = getSignature(user, amount, validUntil, 0);
+        bytes memory signature = getSignature(user, amount, validUntil, true);
         vm.startPrank(user);
         distributorContract.claimMiningRewards(amount, validUntil, user, signature);
         vm.stopPrank();
@@ -365,7 +369,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim the claimable amount
                 uint256 amount = claimable;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil, 0);
+                bytes memory signature = getSignature(user, amount, validUntil, true);
                 vm.startPrank(user);
                 distributorContract.claimMiningRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
@@ -386,7 +390,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim any amount should revert
                 uint256 amount = 1 * 1e18;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil, 0);
+                bytes memory signature = getSignature(user, amount, validUntil, true);
                 vm.startPrank(user);
 
                 // Adjust expected revert message based on the timestamp
@@ -442,7 +446,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim the claimable amount
                 uint256 amount = claimable;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil, 1);
+                bytes memory signature = getSignature(user, amount, validUntil, false);
                 vm.startPrank(user);
                 distributorContract.claimReferralRewards(amount, validUntil, user, signature);
                 vm.stopPrank();
@@ -463,7 +467,7 @@ contract WFIDistributorTest is Test {
                 // Attempt to claim any amount should revert
                 uint256 amount = 1 * 1e18;
                 uint256 validUntil = block.timestamp + 1000;
-                bytes memory signature = getSignature(user, amount, validUntil, 1);
+                bytes memory signature = getSignature(user, amount, validUntil, false);
                 vm.startPrank(user);
 
                 // Adjust expected revert message based on the timestamp

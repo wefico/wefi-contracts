@@ -11,12 +11,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
+contract WFIDistributor is Ownable, Pausable, ReentrancyGuard, EIP712 {
     using ECDSA for bytes32;
-    using MessageHashUtils for bytes32;
 
     // WFI token interface
     IERC20 public immutable wfiToken;
@@ -75,12 +74,20 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
     event RemainingTokensTransferred(address indexed to, uint256 amount);
     event BlockchainMigrationStarted(uint256 timestamp);
 
+    // EIP-712 TypeHash
+    bytes32 private constant CLAIM_TYPEHASH = keccak256("Claim(address receiver,uint256 amount,uint256 validUntil,bool isMiningClaim)");
+
     /**
      * @dev Constructor sets the WFI token address and launch timestamp.
      * @param _wfiToken Address of the WFI token contract.
      * @param _launchTimestamp The timestamp from which distributions start.
      */
-    constructor(address _newOwner, IERC20 _wfiToken, uint256 _launchTimestamp, address _verifierAddress) Ownable(_newOwner) {
+    constructor(
+        address _newOwner,
+        IERC20 _wfiToken,
+        uint256 _launchTimestamp,
+        address _verifierAddress
+    ) Ownable(_newOwner) EIP712("WFIDistributor", "1") {
         require(address(_wfiToken) != address(0), "Invalid token address");
 
         verifierAddress = _verifierAddress;
@@ -111,13 +118,7 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
         require(validUntil >= block.timestamp, "Claim expired");
         require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
-        uint8 claimType = 0;
-        bytes32 messageHash = keccak256(
-            // Sequence of arguments is important here
-            abi.encodePacked(receiverAddress, amount, validUntil, claimType)
-        ).toEthSignedMessageHash();
-        address signer = messageHash.recover(signature);
-        require(signer == verifierAddress, "Invalid signature");
+        require(_verifyClaim(receiverAddress, amount, validUntil, true, signature), "Invalid signature");
 
         require(block.timestamp > launchTimestamp, "Distribution has not started yet");
 
@@ -179,13 +180,7 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
         require(validUntil >= block.timestamp, "Claim expired");
         require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
-        uint8 claimType = 1;
-        bytes32 messageHash = keccak256(
-            // Sequence of arguments is important here
-            abi.encodePacked(receiverAddress, amount, validUntil, claimType)
-        ).toEthSignedMessageHash();
-        address signer = messageHash.recover(signature);
-        require(signer == verifierAddress, "Invalid signature");
+        require(_verifyClaim(receiverAddress, amount, validUntil, false, signature), "Invalid signature");
 
         require(block.timestamp > launchTimestamp, "Distribution has not started yet");
 
@@ -265,5 +260,18 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard {
         wfiToken.transfer(to, totalRemainingTokens);
 
         emit RemainingTokensTransferred(to, totalRemainingTokens);
+    }
+
+    function _verifyClaim(
+        address receiver,
+        uint256 amount,
+        uint256 validUntil,
+        bool isMiningClaim,
+        bytes memory signature
+    ) internal view returns (bool) {
+        bytes32 structHash = keccak256(abi.encode(CLAIM_TYPEHASH, receiver, amount, validUntil, isMiningClaim));
+        bytes32 digest = _hashTypedDataV4(structHash);
+        address signer = ECDSA.recover(digest, signature);
+        return signer == verifierAddress;
     }
 }
