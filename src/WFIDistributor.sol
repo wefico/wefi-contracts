@@ -235,6 +235,7 @@ contract WFIDistributor is Ownable, Pausable, ReentrancyGuard, EIP712 {
      */
     function setBlockchainMigrationTimestamp(uint256 timestamp) external onlyOwner {
         require(timestamp >= block.timestamp + 7 days, "Timestamp must be at least 7 days in the future, to let users claim their rewards");
+        require(blockchainMigrationTimestamp == 0, "Can be called only one time");
 
         blockchainMigrationLockTimestamp = block.timestamp;
         blockchainMigrationTimestamp = timestamp;
