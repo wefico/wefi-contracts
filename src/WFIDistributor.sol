@@ -73,8 +73,8 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     uint256 public totalReferralDistributed;
 
     // Variable for migration to Wechain blockchain
-    uint256 public blockchainMigrationLockTimestamp = 0;
-    uint256 public blockchainMigrationTimestamp = 0;
+    uint256 public blockchainMigrationLockTimestamp;
+    uint256 public blockchainMigrationTimestamp;
 
     // Struct to store claim data per user
     struct ClaimData {
