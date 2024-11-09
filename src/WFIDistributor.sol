@@ -63,10 +63,8 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     // Mapping to store claim data per user
     mapping(bytes => ClaimData) public claims;
-    // Mapping to store claim data signatures per user for mining rewards
-    mapping(address => bytes[]) public miningClaims;
-    // Mapping to store claim data signatures per user for referral rewards
-    mapping(address => bytes[]) public referralClaims;
+    // Mapping to track whether a signature has already been used to prevent replay attacks
+    mapping(bytes => bool) public isSignatureUsed;
 
     // Events for monitoring
     event MiningRewardsClaimed(address indexed user, uint256 amount);
@@ -114,7 +112,7 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes memory signature
     ) external whenNotPaused nonReentrant {
         // Verify the signature
-        require(claims[signature].amount == 0, "Claim already exists");
+        require(!isSignatureUsed[signature], "Claim already exists");
         require(validUntil >= block.timestamp, "Claim expired");
         require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
@@ -129,8 +127,8 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
         totalMiningDistributed += amount;
         // Store claim data
+        isSignatureUsed[signature] = true;
         claims[signature] = ClaimData({receiver: receiverAddress, amount: amount});
-        miningClaims[receiverAddress].push(signature);
 
         // Transfer the calculated reward to the caller
         wfiToken.transfer(receiverAddress, amount);
@@ -176,7 +174,7 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         bytes memory signature
     ) external whenNotPaused nonReentrant {
         // Verify the signature
-        require(claims[signature].amount == 0, "Claim already exists");
+        require(!isSignatureUsed[signature], "Claim already exists");
         require(validUntil >= block.timestamp, "Claim expired");
         require(wfiToken.balanceOf(address(this)) >= amount, "Not enough WFI available on the contract");
         // Verify if provided arguments and signature are valid and matching
@@ -191,8 +189,8 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
         totalReferralDistributed += amount;
         // Store claim data
+        isSignatureUsed[signature] = true;
         claims[signature] = ClaimData({receiver: receiverAddress, amount: amount});
-        referralClaims[receiverAddress].push(signature);
 
         // Transfer the calculated reward to the caller
         wfiToken.transfer(receiverAddress, amount);
