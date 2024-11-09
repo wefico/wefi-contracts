@@ -87,6 +87,7 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         address _verifierAddress
     ) Ownable(_newOwner) EIP712("WFIDistributor", "1") {
         require(address(_wfiToken) != address(0), "Invalid token address");
+        require(address(_verifierAddress) != address(0), "Invalid verifier address");
 
         verifierAddress = _verifierAddress;
         wfiToken = _wfiToken;
