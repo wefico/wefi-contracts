@@ -46,7 +46,7 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     uint256 public immutable launchTimestamp;
 
     // Constants defining the total tokens allocated to each pool
-    uint256 public constant MINING_REWARDS_POOL = 862_068_966 * 1e18; // Adjust decimals if WFI token has different decimals
+    uint256 public constant MINING_REWARDS_POOL = 862_068_966 * 1e18;
     uint256 public constant REFERRAL_STAKING_POOL = 127_931_034 * 1e18;
     uint256 public constant TOTAL_POOL_AMOUNT = MINING_REWARDS_POOL + REFERRAL_STAKING_POOL;
 
