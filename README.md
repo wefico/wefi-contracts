@@ -7,7 +7,7 @@ This repository contains the **WFI Token Distribution Contract** for the **WeCha
 ## Features
 
 - **Mining Rewards Pool**: Distributes mining rewards totaling 862,068,966 WFI tokens with a halving schedule over four intervals.
-- **Referral and Staking Pool**: Manages 137,931,034 WFI tokens with linear vesting over 2 years.
+- **Referral and Staking Pool**: Manages 127,931,034 WFI tokens with linear vesting over 2 years.
 - **Halving Schedule**:
   - **1st Interval**: 8 WFI per block for 57,471,264 blocks.
   - **2nd Interval**: 4 WFI per block for 57,471,264 blocks.
@@ -16,9 +16,11 @@ This repository contains the **WFI Token Distribution Contract** for the **WeCha
 - **Blockchain Migration Support**: Includes mechanisms to handle token distribution during migration to WeChain blockchain.
 - **Security**: Implements protections against common smart contract vulnerabilities.
 
+**IMPORTANT:** Currently, 1 block = 1 second. Block is a Wechain term to specify that in the future mining and staking process - it will be linked to Wechain blockchain block, not to the second.
+
 ## Technical Specifications
 
-- **Solidity Version**: ^0.8.20
+- **Solidity Version**: 0.8.20
 - **Framework**: [Foundry](https://book.getfoundry.sh/)
 - **Libraries**:
   - [OpenZeppelin Contracts](https://github.com/OpenZeppelin/openzeppelin-contracts)

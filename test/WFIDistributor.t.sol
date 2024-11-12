@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.20;
 
 /**
@@ -13,22 +13,11 @@ import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import "../src/WFIDistributor.sol";
-
-/**
- * @dev A simple ERC20 token for testing purposes.
- */
-contract ERC20Mock is ERC20 {
-    using ECDSA for bytes32;
-    using MessageHashUtils for bytes32;
-
-    constructor(string memory name, string memory symbol, address initialAccount, uint256 initialBalance) ERC20(name, symbol) {
-        _mint(initialAccount, initialBalance);
-    }
-}
+import "../src/WFI.sol";
 
 contract WFIDistributorTest is Test {
     // Contracts
-    ERC20Mock public wfiToken;
+    WFI public wfiToken;
     WFIDistributor public distributorContract;
 
     // Addresses
@@ -40,9 +29,6 @@ contract WFIDistributorTest is Test {
 
     // Launch timestamp
     uint256 public launchTimestamp;
-
-    // Constants
-    uint256 public totalSupply = 1_000_000_000 * 1e18;
 
     // Add EIP712 domain separator components
     bytes32 constant DOMAIN_TYPE_HASH = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
@@ -58,7 +44,7 @@ contract WFIDistributorTest is Test {
 
         // Deploy a mock WFI token and mint total supply to the owner
         vm.startPrank(owner);
-        wfiToken = new ERC20Mock("WeChain Token", "WFI", owner, totalSupply);
+        wfiToken = new WFI(owner);
         vm.stopPrank();
 
         // Set the launch timestamp to the current block timestamp + 1 hour

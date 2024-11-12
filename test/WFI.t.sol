@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.20;
 
 import "forge-std/Test.sol";
@@ -22,7 +22,6 @@ contract WFITest is Test {
     function testMinting() public {
         assertEq(wfi.balanceOf(user1), 0);
         vm.prank(owner);
-        wfi.mint(user1, 1000 * 1e6);
-        assertEq(wfi.balanceOf(user1), 1000 * 1e6);
+        assertEq(wfi.balanceOf(owner), wfi.MAX_SUPPLY());
     }
 }

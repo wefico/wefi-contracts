@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.20;
 
 /**
@@ -137,6 +137,9 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         address receiverAddress,
         bytes memory signature
     ) external whenNotPaused nonReentrant {
+        if (receiverAddress == address(0)) {
+            revert InvalidAddress();
+        }
         // Verify the signature
         if (isSignatureUsed[signature]) {
             revert ClaimAlreadyExists();
@@ -215,6 +218,9 @@ contract WFIDistributor is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         address receiverAddress,
         bytes memory signature
     ) external whenNotPaused nonReentrant {
+        if (receiverAddress == address(0)) {
+            revert InvalidAddress();
+        }
         // Verify the signature
         if (isSignatureUsed[signature]) {
             revert ClaimAlreadyExists();
